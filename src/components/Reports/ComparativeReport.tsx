@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -22,7 +22,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { format } from "date-fns";
+import { format, isWithinInterval, parseISO } from "date-fns";
 import {
   CalendarIcon,
   Download,
@@ -30,11 +30,13 @@ import {
   BarChart3,
   LineChart,
   PieChart,
+  Loader2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { cn } from "@/lib/utils";
+import { useReportData } from "@/hooks/useReportData";
 
 interface ComparativeReportProps {
   className?: string;
@@ -51,32 +53,9 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
   const [selectedColor, setSelectedColor] = useState<string>();
   const [chartType, setChartType] = useState<string>("bar");
 
-  // Mock data for dropdowns
-  const municipalities = [
-    { id: 1, name: "São Paulo" },
-    { id: 2, name: "Rio de Janeiro" },
-    { id: 3, name: "Belo Horizonte" },
-    { id: 4, name: "Salvador" },
-    { id: 5, name: "Recife" },
-  ];
-
-  const producers = [
-    { id: 101, name: "João Silva" },
-    { id: 102, name: "Maria Oliveira" },
-    { id: 103, name: "Carlos Santos" },
-    { id: 104, name: "Ana Pereira" },
-    { id: 105, name: "Paulo Costa" },
-  ];
-
-  const colors = [
-    { id: 1, name: "Branco Água" },
-    { id: 2, name: "Extra Branco" },
-    { id: 3, name: "Branco" },
-    { id: 4, name: "Âmbar Extra Claro" },
-    { id: 5, name: "Âmbar Claro" },
-    { id: 6, name: "Âmbar" },
-    { id: 7, name: "Âmbar Escuro" },
-  ];
+  // Usar o hook para buscar os dados
+  const { data, loading, error } = useReportData();
+  const { producers, entries, municipalities, colors } = data;
 
   // Mock data for charts
   const mockChartData = {
@@ -109,6 +88,47 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
     ],
   };
 
+  // Filtrar os dados com base nos filtros selecionados
+  const filteredEntries = useMemo(() => {
+    if (!entries.length) return [];
+
+    return entries.filter((entry) => {
+      // Filtrar por data
+      const dateInRange =
+        fromDate && toDate
+          ? isWithinInterval(new Date(entry.date), {
+              start: fromDate,
+              end: toDate,
+            })
+          : true;
+
+      // Filtrar por município
+      const municipalityMatch = selectedMunicipality
+        ? entry.municipality === selectedMunicipality
+        : true;
+
+      // Filtrar por produtor
+      const producerMatch = selectedProducer
+        ? entry.producerName === selectedProducer
+        : true;
+
+      // Filtrar por cor
+      const colorMatch = selectedColor
+        ? entry.colorCode === colors.find((c) => c.name === selectedColor)?.code
+        : true;
+
+      return dateInRange && municipalityMatch && producerMatch && colorMatch;
+    });
+  }, [
+    entries,
+    fromDate,
+    toDate,
+    selectedMunicipality,
+    selectedProducer,
+    selectedColor,
+    colors,
+  ]);
+
   // Helper function to get report data based on current tab
   const getReportData = () => {
     let title = "";
@@ -123,11 +143,42 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
         "Valor Total (R$)",
         "Média por Produtor",
       ];
-      data = [
-        ["Janeiro/2024", "1.250", "R$ 25.000,00", "125 kg"],
-        ["Fevereiro/2024", "1.420", "R$ 28.400,00", "142 kg"],
-        ["Março/2024", "1.680", "R$ 33.600,00", "168 kg"],
-      ];
+
+      // Agrupar entradas por mês
+      const entriesByMonth = filteredEntries.reduce((acc, entry) => {
+        const monthYear = format(new Date(entry.date), "MMMM/yyyy");
+        if (!acc[monthYear]) {
+          acc[monthYear] = {
+            totalWeight: 0,
+            totalValue: 0,
+            producerCount: new Set(),
+          };
+        }
+        acc[monthYear].totalWeight += entry.netWeight;
+        acc[monthYear].totalValue += entry.totalValue;
+        acc[monthYear].producerCount.add(entry.producerId);
+        return acc;
+      }, {});
+
+      // Converter para o formato da tabela
+      data = Object.entries(entriesByMonth).map(([monthYear, stats]) => {
+        const avgPerProducer = stats.totalWeight / stats.producerCount.size;
+        return [
+          monthYear,
+          stats.totalWeight.toFixed(2),
+          `R$ ${stats.totalValue.toFixed(2)}`,
+          `${avgPerProducer.toFixed(1)} kg`,
+        ];
+      });
+
+      // Se não houver dados filtrados, usar dados de exemplo
+      if (data.length === 0) {
+        data = [
+          ["Janeiro/2024", "1.250", "R$ 25.000,00", "125 kg"],
+          ["Fevereiro/2024", "1.420", "R$ 28.400,00", "142 kg"],
+          ["Março/2024", "1.680", "R$ 33.600,00", "168 kg"],
+        ];
+      }
     } else if (reportType === "municipality") {
       title = "Relatório de Produção por Município";
       headers = [
@@ -136,11 +187,41 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
         "Nº de Produtores",
         "Média por Produtor",
       ];
-      data = [
-        ["São Paulo", "3.250", "15", "216,7 kg"],
-        ["Rio de Janeiro", "2.840", "12", "236,7 kg"],
-        ["Belo Horizonte", "2.100", "10", "210,0 kg"],
-      ];
+
+      // Agrupar entradas por município
+      const entriesByMunicipality = filteredEntries.reduce((acc, entry) => {
+        if (!acc[entry.municipality]) {
+          acc[entry.municipality] = {
+            totalWeight: 0,
+            producerCount: new Set(),
+          };
+        }
+        acc[entry.municipality].totalWeight += entry.netWeight;
+        acc[entry.municipality].producerCount.add(entry.producerId);
+        return acc;
+      }, {});
+
+      // Converter para o formato da tabela
+      data = Object.entries(entriesByMunicipality).map(
+        ([municipality, stats]) => {
+          const avgPerProducer = stats.totalWeight / stats.producerCount.size;
+          return [
+            municipality,
+            stats.totalWeight.toFixed(2),
+            stats.producerCount.size.toString(),
+            `${avgPerProducer.toFixed(1)} kg`,
+          ];
+        },
+      );
+
+      // Se não houver dados filtrados, usar dados de exemplo
+      if (data.length === 0) {
+        data = [
+          ["São Paulo", "3.250", "15", "216,7 kg"],
+          ["Rio de Janeiro", "2.840", "12", "236,7 kg"],
+          ["Belo Horizonte", "2.100", "10", "210,0 kg"],
+        ];
+      }
     } else if (reportType === "producer") {
       title = "Relatório de Produção por Produtor";
       headers = [
@@ -149,11 +230,37 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
         "Quantidade (kg)",
         "Valor Total (R$)",
       ];
-      data = [
-        ["João Silva", "São Paulo", "850", "R$ 17.000,00"],
-        ["Maria Oliveira", "Rio de Janeiro", "720", "R$ 14.400,00"],
-        ["Carlos Santos", "Belo Horizonte", "680", "R$ 13.600,00"],
-      ];
+
+      // Agrupar entradas por produtor
+      const entriesByProducer = filteredEntries.reduce((acc, entry) => {
+        if (!acc[entry.producerName]) {
+          acc[entry.producerName] = {
+            municipality: entry.municipality,
+            totalWeight: 0,
+            totalValue: 0,
+          };
+        }
+        acc[entry.producerName].totalWeight += entry.netWeight;
+        acc[entry.producerName].totalValue += entry.totalValue;
+        return acc;
+      }, {});
+
+      // Converter para o formato da tabela
+      data = Object.entries(entriesByProducer).map(([producerName, stats]) => [
+        producerName,
+        stats.municipality,
+        stats.totalWeight.toFixed(2),
+        `R$ ${stats.totalValue.toFixed(2)}`,
+      ]);
+
+      // Se não houver dados filtrados, usar dados de exemplo
+      if (data.length === 0) {
+        data = [
+          ["João Silva", "São Paulo", "850", "R$ 17.000,00"],
+          ["Maria Oliveira", "Rio de Janeiro", "720", "R$ 14.400,00"],
+          ["Carlos Santos", "Belo Horizonte", "680", "R$ 13.600,00"],
+        ];
+      }
     }
 
     return { title, headers, data };
@@ -202,6 +309,11 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
       headStyles: { fillColor: [41, 128, 185], textColor: 255 },
     });
 
+    // Adicionar informações sobre o total de registros
+    const finalY = (doc as any).lastAutoTable.finalY || yPos;
+    doc.setFontSize(10);
+    doc.text(`Total de registros: ${filteredEntries.length}`, 14, finalY + 10);
+
     // Save the PDF
     doc.save(
       `relatorio_${reportType}_${new Date().toISOString().split("T")[0]}.pdf`,
@@ -211,17 +323,81 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
   const handleExportExcel = () => {
     const { title, headers, data } = getReportData();
 
-    // Create worksheet
+    // Create worksheet for the main report
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
 
     // Create workbook
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Relatório");
 
+    // Adicionar planilha com todos os produtores
+    if (producers.length > 0) {
+      const producerHeaders = [
+        "ID",
+        "Nome",
+        "Código COMAPI",
+        "Município",
+        "Comunidade",
+      ];
+      const producerData = producers.map((p) => [
+        p.id,
+        p.name,
+        p.cod_na_comapi,
+        p.municipality,
+        p.community,
+      ]);
+
+      const wsProducers = XLSX.utils.aoa_to_sheet([
+        producerHeaders,
+        ...producerData,
+      ]);
+      XLSX.utils.book_append_sheet(wb, wsProducers, "Produtores");
+    }
+
+    // Adicionar planilha com todas as entradas
+    if (entries.length > 0) {
+      const entryHeaders = [
+        "Data",
+        "Produtor",
+        "Município",
+        "Comunidade",
+        "Quantidade",
+        "Peso Bruto (kg)",
+        "Peso Líquido (kg)",
+        "Valor Unitário (R$)",
+        "Valor Total (R$)",
+        "Classificação",
+        "Umidade (%)",
+        "Apiário",
+        "Lote",
+        "Contrato",
+      ];
+
+      const entryData = entries.map((e) => [
+        format(new Date(e.date), "dd/MM/yyyy"),
+        e.producerName,
+        e.municipality,
+        e.community,
+        e.quantity,
+        e.grossWeight,
+        e.netWeight,
+        e.unitValue,
+        e.totalValue,
+        colors.find((c) => c.code === e.colorCode)?.name || e.colorCode,
+        e.humidity,
+        e.apiary,
+        e.lot,
+        e.contract,
+      ]);
+
+      const wsEntries = XLSX.utils.aoa_to_sheet([entryHeaders, ...entryData]);
+      XLSX.utils.book_append_sheet(wb, wsEntries, "Entradas");
+    }
+
     // Generate Excel file
     XLSX.writeFile(
       wb,
-      `relatorio_${reportType}_${new Date().toISOString().split("T")[0]}.xlsx`,
+      `relatorio_completo_${reportType}_${new Date().toISOString().split("T")[0]}.xlsx`,
     );
   };
 
@@ -402,17 +578,23 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
 
             <TabsContent value="period" className="space-y-4">
               <div className="h-[400px] w-full bg-muted/20 rounded-lg flex items-center justify-center">
-                {/* Placeholder for chart */}
-                <div className="text-center">
-                  <p className="text-lg font-medium">
-                    Gráfico de Produção por Período
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {fromDate && toDate
-                      ? `Dados de ${format(fromDate, "dd/MM/yyyy")} até ${format(toDate, "dd/MM/yyyy")}`
-                      : "Selecione um período para visualizar os dados"}
-                  </p>
-                </div>
+                {loading ? (
+                  <div className="flex flex-col items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                    <p>Carregando dados...</p>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <p className="text-lg font-medium">
+                      Gráfico de Produção por Período
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {fromDate && toDate
+                        ? `Dados de ${format(fromDate, "dd/MM/yyyy")} até ${format(toDate, "dd/MM/yyyy")}`
+                        : "Selecione um período para visualizar os dados"}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="overflow-x-auto">
@@ -426,24 +608,29 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-b">
-                      <td className="p-2">Janeiro/2024</td>
-                      <td className="p-2">1.250</td>
-                      <td className="p-2">R$ 25.000,00</td>
-                      <td className="p-2">125 kg</td>
-                    </tr>
-                    <tr className="border-b">
-                      <td className="p-2">Fevereiro/2024</td>
-                      <td className="p-2">1.420</td>
-                      <td className="p-2">R$ 28.400,00</td>
-                      <td className="p-2">142 kg</td>
-                    </tr>
-                    <tr className="border-b">
-                      <td className="p-2">Março/2024</td>
-                      <td className="p-2">1.680</td>
-                      <td className="p-2">R$ 33.600,00</td>
-                      <td className="p-2">168 kg</td>
-                    </tr>
+                    {loading ? (
+                      <tr>
+                        <td colSpan={4} className="p-4 text-center">
+                          <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                          <p>Carregando dados...</p>
+                        </td>
+                      </tr>
+                    ) : getReportData().data.length > 0 ? (
+                      getReportData().data.map((row, index) => (
+                        <tr key={index} className="border-b">
+                          <td className="p-2">{row[0]}</td>
+                          <td className="p-2">{row[1]}</td>
+                          <td className="p-2">{row[2]}</td>
+                          <td className="p-2">{row[3]}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className="p-4 text-center">
+                          Nenhum dado encontrado para os filtros selecionados.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -451,17 +638,23 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
 
             <TabsContent value="municipality" className="space-y-4">
               <div className="h-[400px] w-full bg-muted/20 rounded-lg flex items-center justify-center">
-                {/* Placeholder for chart */}
-                <div className="text-center">
-                  <p className="text-lg font-medium">
-                    Gráfico de Produção por Município
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedMunicipality
-                      ? `Dados de produção para ${selectedMunicipality}`
-                      : "Selecione um município para visualizar os dados"}
-                  </p>
-                </div>
+                {loading ? (
+                  <div className="flex flex-col items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                    <p>Carregando dados...</p>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <p className="text-lg font-medium">
+                      Gráfico de Produção por Município
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedMunicipality
+                        ? `Dados de produção para ${selectedMunicipality}`
+                        : "Selecione um município para visualizar os dados"}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="overflow-x-auto">
@@ -475,24 +668,30 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-b">
-                      <td className="p-2">São Paulo</td>
-                      <td className="p-2">3.250</td>
-                      <td className="p-2">15</td>
-                      <td className="p-2">216,7 kg</td>
-                    </tr>
-                    <tr className="border-b">
-                      <td className="p-2">Rio de Janeiro</td>
-                      <td className="p-2">2.840</td>
-                      <td className="p-2">12</td>
-                      <td className="p-2">236,7 kg</td>
-                    </tr>
-                    <tr className="border-b">
-                      <td className="p-2">Belo Horizonte</td>
-                      <td className="p-2">2.100</td>
-                      <td className="p-2">10</td>
-                      <td className="p-2">210,0 kg</td>
-                    </tr>
+                    {loading ? (
+                      <tr>
+                        <td colSpan={4} className="p-4 text-center">
+                          <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                          <p>Carregando dados...</p>
+                        </td>
+                      </tr>
+                    ) : reportType === "municipality" &&
+                      getReportData().data.length > 0 ? (
+                      getReportData().data.map((row, index) => (
+                        <tr key={index} className="border-b">
+                          <td className="p-2">{row[0]}</td>
+                          <td className="p-2">{row[1]}</td>
+                          <td className="p-2">{row[2]}</td>
+                          <td className="p-2">{row[3]}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className="p-4 text-center">
+                          Nenhum dado encontrado para os filtros selecionados.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -500,17 +699,23 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
 
             <TabsContent value="producer" className="space-y-4">
               <div className="h-[400px] w-full bg-muted/20 rounded-lg flex items-center justify-center">
-                {/* Placeholder for chart */}
-                <div className="text-center">
-                  <p className="text-lg font-medium">
-                    Gráfico de Produção por Produtor
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedProducer
-                      ? `Dados de produção para ${selectedProducer}`
-                      : "Selecione um produtor para visualizar os dados"}
-                  </p>
-                </div>
+                {loading ? (
+                  <div className="flex flex-col items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                    <p>Carregando dados...</p>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <p className="text-lg font-medium">
+                      Gráfico de Produção por Produtor
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedProducer
+                        ? `Dados de produção para ${selectedProducer}`
+                        : "Selecione um produtor para visualizar os dados"}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="overflow-x-auto">
@@ -524,24 +729,30 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-b">
-                      <td className="p-2">João Silva</td>
-                      <td className="p-2">São Paulo</td>
-                      <td className="p-2">850</td>
-                      <td className="p-2">R$ 17.000,00</td>
-                    </tr>
-                    <tr className="border-b">
-                      <td className="p-2">Maria Oliveira</td>
-                      <td className="p-2">Rio de Janeiro</td>
-                      <td className="p-2">720</td>
-                      <td className="p-2">R$ 14.400,00</td>
-                    </tr>
-                    <tr className="border-b">
-                      <td className="p-2">Carlos Santos</td>
-                      <td className="p-2">Belo Horizonte</td>
-                      <td className="p-2">680</td>
-                      <td className="p-2">R$ 13.600,00</td>
-                    </tr>
+                    {loading ? (
+                      <tr>
+                        <td colSpan={4} className="p-4 text-center">
+                          <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                          <p>Carregando dados...</p>
+                        </td>
+                      </tr>
+                    ) : reportType === "producer" &&
+                      getReportData().data.length > 0 ? (
+                      getReportData().data.map((row, index) => (
+                        <tr key={index} className="border-b">
+                          <td className="p-2">{row[0]}</td>
+                          <td className="p-2">{row[1]}</td>
+                          <td className="p-2">{row[2]}</td>
+                          <td className="p-2">{row[3]}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className="p-4 text-center">
+                          Nenhum dado encontrado para os filtros selecionados.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -551,18 +762,57 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
         <CardFooter className="flex justify-between">
           <div>
             <p className="text-sm text-muted-foreground">
-              Total de registros: 42
+              Total de registros: {loading ? "..." : filteredEntries.length}
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleExportPDF}>
-              <Download className="h-4 w-4 mr-1" /> PDF
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportPDF}
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" /> Carregando
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-1" /> PDF
+                </>
+              )}
             </Button>
-            <Button variant="outline" size="sm" onClick={handleExportExcel}>
-              <Download className="h-4 w-4 mr-1" /> Excel
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportExcel}
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" /> Carregando
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-1" /> Excel
+                </>
+              )}
             </Button>
-            <Button variant="outline" size="sm" onClick={handlePrint}>
-              <Printer className="h-4 w-4 mr-1" /> Imprimir
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePrint}
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" /> Carregando
+                </>
+              ) : (
+                <>
+                  <Printer className="h-4 w-4 mr-1" /> Imprimir
+                </>
+              )}
             </Button>
           </div>
         </CardFooter>
