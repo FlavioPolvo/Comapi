@@ -1,0 +1,9 @@
+import ComparativeReport from "@/components/Reports/ComparativeReport";
+
+export default function ReportWithCharts() {
+  return (
+    <div className="bg-white p-4">
+      <ComparativeReport />
+    </div>
+  );
+}
