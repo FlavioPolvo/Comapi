@@ -171,10 +171,22 @@ const EntryForm: React.FC<EntryFormProps> = ({ onSubmit, onCancel }) => {
         }
       }
 
-      if (field === "unitValue") {
+      if (field === "unitValue" || field === "netWeight") {
         const netWeight = Number(newData.netWeight) || 0;
-        const unitValue = Number(value) || 0;
+        const unitValue = Number(newData.unitValue) || 0;
         newData.totalValue = netWeight * unitValue;
+      }
+
+      // If totalTare is manually changed, recalculate netWeight
+      if (field === "totalTare") {
+        const grossWeight = Number(newData.grossWeight) || 0;
+        const totalTare = Number(newData.totalTare) || 0;
+        newData.netWeight = grossWeight - totalTare;
+
+        // Recalculate total value
+        if (newData.unitValue) {
+          newData.totalValue = newData.netWeight * Number(newData.unitValue);
+        }
       }
 
       return newData;
@@ -227,15 +239,7 @@ const EntryForm: React.FC<EntryFormProps> = ({ onSubmit, onCancel }) => {
 
   return (
     <Card className="w-full max-w-4xl mx-auto bg-white">
-      <CardHeader>
-        <CardTitle className="text-2xl font-bold text-center">
-          Registro de Entrada de Produtos
-        </CardTitle>
-        <CardDescription className="text-center">
-          Preencha os dados para registrar a entrada de produtos apícolas
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+      <CardContent className="pt-6">
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Date Selection */}
@@ -424,8 +428,9 @@ const EntryForm: React.FC<EntryFormProps> = ({ onSubmit, onCancel }) => {
                 type="number"
                 step="0.01"
                 value={formData.totalTare?.toString() || ""}
-                readOnly
-                className="bg-gray-100"
+                onChange={(e) =>
+                  handleInputChange("totalTare", Number(e.target.value))
+                }
               />
             </div>
 
@@ -451,8 +456,9 @@ const EntryForm: React.FC<EntryFormProps> = ({ onSubmit, onCancel }) => {
                 type="number"
                 step="0.01"
                 value={formData.netWeight?.toString() || ""}
-                readOnly
-                className="bg-gray-100"
+                onChange={(e) =>
+                  handleInputChange("netWeight", Number(e.target.value))
+                }
               />
             </div>
           </div>

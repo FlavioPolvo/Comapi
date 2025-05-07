@@ -100,15 +100,9 @@ const ProducerForm = () => {
   };
 
   return (
-    <div className="container mx-auto p-6 bg-background">
+    <div className="container mx-auto bg-background">
       <Card className="w-full">
-        <CardHeader>
-          <CardTitle className="text-2xl">Cadastro de Produtor</CardTitle>
-          <CardDescription>
-            Preencha os dados do produtor para cadastro no sistema.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <Tabs
               value={activeTab}

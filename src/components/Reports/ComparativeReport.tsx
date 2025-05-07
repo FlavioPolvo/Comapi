@@ -1512,17 +1512,10 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
   }, [searchTerm, producers]);
 
   return (
-    <div className={cn("bg-background p-6 rounded-lg", className)}>
+    <div className={cn("bg-background rounded-lg", className)}>
       <Card className="w-full">
-        <CardHeader>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <CardTitle>Relatórios Comparativos</CardTitle>
-              <CardDescription>
-                Gere relatórios comparativos de produção por período, município,
-                produtor ou classificação por cor.
-              </CardDescription>
-            </div>
+        <CardContent className="pt-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -1544,8 +1537,6 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
               </Button>
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
           <Tabs
             value={reportType}
             onValueChange={setReportType}

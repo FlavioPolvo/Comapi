@@ -71,6 +71,14 @@ const ProductionSummary: React.FC<ProductionSummaryProps> = ({
   const [date, setDate] = React.useState<Date | undefined>(new Date());
   const [period, setPeriod] = React.useState("monthly");
   const [municipality, setMunicipality] = React.useState("all");
+  const [colorFilter, setColorFilter] = React.useState("all");
+  const [dateRange, setDateRange] = React.useState<{
+    from: Date | undefined;
+    to: Date | undefined;
+  }>({
+    from: new Date(new Date().setMonth(new Date().getMonth() - 3)),
+    to: new Date(),
+  });
 
   // Placeholder for chart rendering - in a real app, you would use a charting library like recharts
   const renderBarChart = () => {
@@ -136,7 +144,7 @@ const ProductionSummary: React.FC<ProductionSummaryProps> = ({
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <h2 className="text-2xl font-bold">Resumo de Produção</h2>
 
-        <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex flex-col sm:flex-row gap-4 flex-wrap">
           <Select value={period} onValueChange={setPeriod}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Período" />
@@ -163,23 +171,111 @@ const ProductionSummary: React.FC<ProductionSummaryProps> = ({
             </SelectContent>
           </Select>
 
+          <Select value={colorFilter} onValueChange={setColorFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Classificação por Cor" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as cores</SelectItem>
+              {productionData.productionByColor.map((item, index) => (
+                <SelectItem key={index} value={item.color.toLowerCase()}>
+                  {item.color}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Popover>
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
-                className="w-[180px] justify-start text-left font-normal"
+                className="w-[220px] justify-start text-left font-normal"
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {date ? format(date, "PPP") : <span>Selecione uma data</span>}
+                {dateRange.from && dateRange.to ? (
+                  <>
+                    {format(dateRange.from, "dd/MM/yyyy")} -{" "}
+                    {format(dateRange.to, "dd/MM/yyyy")}
+                  </>
+                ) : (
+                  <span>Selecione um período</span>
+                )}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
-              <Calendar
-                mode="single"
-                selected={date}
-                onSelect={setDate}
-                initialFocus
-              />
+            <PopoverContent className="w-auto p-0" align="start">
+              <div className="flex flex-col space-y-2 p-2">
+                <div className="grid gap-2">
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium">De</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start text-left font-normal"
+                        >
+                          {dateRange.from ? (
+                            format(dateRange.from, "dd/MM/yyyy")
+                          ) : (
+                            <span>Selecione uma data</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={dateRange.from}
+                          onSelect={(date) =>
+                            setDateRange((prev) => ({ ...prev, from: date }))
+                          }
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium">Até</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start text-left font-normal"
+                        >
+                          {dateRange.to ? (
+                            format(dateRange.to, "dd/MM/yyyy")
+                          ) : (
+                            <span>Selecione uma data</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={dateRange.to}
+                          onSelect={(date) =>
+                            setDateRange((prev) => ({ ...prev, to: date }))
+                          }
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setDateRange({
+                        from: new Date(
+                          new Date().setMonth(new Date().getMonth() - 3),
+                        ),
+                        to: new Date(),
+                      });
+                    }}
+                  >
+                    Aplicar
+                  </Button>
+                </div>
+              </div>
             </PopoverContent>
           </Popover>
         </div>

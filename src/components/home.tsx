@@ -23,15 +23,20 @@ import {
   FileText,
   Home,
   Settings,
+  Database,
 } from "lucide-react";
 import ProductionSummary from "./Dashboard/ProductionSummary";
 import EntryForm from "./EntryControl/EntryForm";
 import ProducerForm from "./Producers/ProducerForm";
 import ComparativeReport from "./Reports/ComparativeReport";
+import { useReportData } from "@/hooks/useReportData";
+import SupabaseConfig from "./SupabaseConfig";
 
 const HomePage = () => {
   const [date, setDate] = React.useState<Date | undefined>(new Date());
   const [activeTab, setActiveTab] = React.useState("dashboard");
+  const { data, loading } = useReportData();
+  const [showSupabaseConfig, setShowSupabaseConfig] = React.useState(false);
 
   return (
     <div className="min-h-screen bg-background">
@@ -77,7 +82,15 @@ const HomePage = () => {
           <FileText className="h-5 w-5" />
         </Button>
 
-        <div className="mt-auto">
+        <div className="mt-auto flex flex-col gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-full"
+            onClick={() => setShowSupabaseConfig(true)}
+          >
+            <Database className="h-5 w-5" />
+          </Button>
           <Button variant="ghost" size="icon" className="rounded-full">
             <Settings className="h-5 w-5" />
           </Button>
@@ -160,9 +173,13 @@ const HomePage = () => {
                     <CardDescription>Produção total de mel</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold">1.250 kg</div>
+                    <div className="text-3xl font-bold">
+                      {loading
+                        ? "Carregando..."
+                        : `${data.productionSummary.totalProduction.toFixed(2)} kg`}
+                    </div>
                     <p className="text-sm text-muted-foreground">
-                      +15% em relação ao mês anterior
+                      Dados atualizados em tempo real
                     </p>
                   </CardContent>
                 </Card>
@@ -175,9 +192,13 @@ const HomePage = () => {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold">48</div>
+                    <div className="text-3xl font-bold">
+                      {loading
+                        ? "Carregando..."
+                        : data.productionSummary.totalProducers}
+                    </div>
                     <p className="text-sm text-muted-foreground">
-                      +3 novos este mês
+                      Produtores com entradas registradas
                     </p>
                   </CardContent>
                 </Card>
@@ -190,15 +211,19 @@ const HomePage = () => {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold">26 kg</div>
+                    <div className="text-3xl font-bold">
+                      {loading
+                        ? "Carregando..."
+                        : `${data.productionSummary.averagePerProducer.toFixed(2)} kg`}
+                    </div>
                     <p className="text-sm text-muted-foreground">
-                      +2kg em relação ao mês anterior
+                      Média calculada com base nas entradas
                     </p>
                   </CardContent>
                 </Card>
               </div>
 
-              <ProductionSummary />
+              <ProductionSummary productionData={data.productionSummary} />
             </TabsContent>
 
             <TabsContent value="producers">
@@ -244,6 +269,45 @@ const HomePage = () => {
             </TabsContent>
           </Tabs>
         </main>
+
+        {/* Supabase Configuration Modal */}
+        {showSupabaseConfig && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-background rounded-lg w-full max-w-4xl max-h-[90vh] overflow-auto">
+              <div className="p-4 flex justify-between items-center border-b">
+                <h2 className="text-xl font-semibold">
+                  Configuração do Supabase
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowSupabaseConfig(false)}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="lucide lucide-x"
+                  >
+                    <path d="M18 6 6 18" />
+                    <path d="m6 6 12 12" />
+                  </svg>
+                </Button>
+              </div>
+              <div className="p-4">
+                <SupabaseConfig
+                  onConfigured={() => setShowSupabaseConfig(false)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
