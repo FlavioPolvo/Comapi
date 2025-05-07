@@ -347,11 +347,34 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
     return [];
   }, [filteredEntries, reportType, colors]);
 
+  // Type definitions for stats objects
+  type MonthStats = {
+    totalWeight: number;
+    totalValue: number;
+    producerCount: Set<string>;
+  };
+
+  type MunicipalityStats = {
+    totalWeight: number;
+    producerCount: Set<string>;
+  };
+
+  type ProducerStats = {
+    municipality: string;
+    totalWeight: number;
+    totalValue: number;
+  };
+
+  type ColorStats = {
+    totalWeight: number;
+    totalValue: number;
+  };
+
   // Helper function to get report data based on current tab
   const getReportData = useCallback(() => {
     let title = "";
-    let headers = [];
-    let data = [];
+    let headers: string[] = [];
+    let data: any[][] = [];
 
     if (reportType === "period") {
       title = "Relatório de Produção por Período";
@@ -363,22 +386,25 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
       ];
 
       // Agrupar entradas por mês
-      const entriesByMonth = filteredEntries.reduce((acc, entry) => {
-        const monthYear = format(new Date(entry.date), "MMMM/yyyy", {
-          locale: ptBR,
-        });
-        if (!acc[monthYear]) {
-          acc[monthYear] = {
-            totalWeight: 0,
-            totalValue: 0,
-            producerCount: new Set(),
-          };
-        }
-        acc[monthYear].totalWeight += entry.netWeight;
-        acc[monthYear].totalValue += entry.totalValue;
-        acc[monthYear].producerCount.add(entry.producerId);
-        return acc;
-      }, {});
+      const entriesByMonth = filteredEntries.reduce<Record<string, MonthStats>>(
+        (acc, entry) => {
+          const monthYear = format(new Date(entry.date), "MMMM/yyyy", {
+            locale: ptBR,
+          });
+          if (!acc[monthYear]) {
+            acc[monthYear] = {
+              totalWeight: 0,
+              totalValue: 0,
+              producerCount: new Set(),
+            };
+          }
+          acc[monthYear].totalWeight += entry.netWeight;
+          acc[monthYear].totalValue += entry.totalValue;
+          acc[monthYear].producerCount.add(entry.producerId);
+          return acc;
+        },
+        {},
+      );
 
       // Converter para o formato da tabela
       data = Object.entries(entriesByMonth).map(([monthYear, stats]) => {
@@ -410,7 +436,9 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
       ];
 
       // Agrupar entradas por município
-      const entriesByMunicipality = filteredEntries.reduce((acc, entry) => {
+      const entriesByMunicipality = filteredEntries.reduce<
+        Record<string, MunicipalityStats>
+      >((acc, entry) => {
         if (!acc[entry.municipality]) {
           acc[entry.municipality] = {
             totalWeight: 0,
@@ -457,7 +485,9 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
       ];
 
       // Agrupar entradas por produtor
-      const entriesByProducer = filteredEntries.reduce((acc, entry) => {
+      const entriesByProducer = filteredEntries.reduce<
+        Record<string, ProducerStats>
+      >((acc, entry) => {
         if (!acc[entry.producerName]) {
           acc[entry.producerName] = {
             municipality: entry.municipality,
@@ -512,40 +542,41 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
       ];
 
       // Agrupar entradas por cor
-      const entriesByColor = filteredEntries.reduce((acc, entry) => {
-        const colorName =
-          colors.find((c) => c.code === entry.colorCode)?.name ||
-          entry.colorCode;
-        if (!acc[colorName]) {
-          acc[colorName] = {
-            totalWeight: 0,
-            totalValue: 0,
-          };
-        }
-        acc[colorName].totalWeight += entry.netWeight;
-        acc[colorName].totalValue += entry.totalValue;
-        return acc;
-      }, {});
+      const entriesByColor = filteredEntries.reduce<Record<string, ColorStats>>(
+        (acc, entry) => {
+          const colorName =
+            colors.find((c) => c.code === entry.colorCode)?.name ||
+            entry.colorCode;
+          if (!acc[colorName]) {
+            acc[colorName] = {
+              totalWeight: 0,
+              totalValue: 0,
+            };
+          }
+          acc[colorName].totalWeight += entry.netWeight;
+          acc[colorName].totalValue += entry.totalValue;
+          return acc;
+        },
+        {},
+      );
 
       // Calcular total para percentagens
       const totalWeight = Object.values(entriesByColor).reduce(
-        (sum, stats: any) => sum + stats.totalWeight,
+        (sum, stats) => sum + stats.totalWeight,
         0,
       );
 
       // Converter para o formato da tabela
-      data = Object.entries(entriesByColor).map(
-        ([colorName, stats]: [string, any]) => {
-          const percentage = (stats.totalWeight / totalWeight) * 100;
-          const avgValue = stats.totalValue / stats.totalWeight;
-          return [
-            colorName,
-            stats.totalWeight.toFixed(2),
-            `${percentage.toFixed(1)}%`,
-            `R$ ${avgValue.toFixed(2)}`,
-          ];
-        },
-      );
+      data = Object.entries(entriesByColor).map(([colorName, stats]) => {
+        const percentage = (stats.totalWeight / totalWeight) * 100;
+        const avgValue = stats.totalValue / stats.totalWeight;
+        return [
+          colorName,
+          stats.totalWeight.toFixed(2),
+          `${percentage.toFixed(1)}%`,
+          `R$ ${avgValue.toFixed(2)}`,
+        ];
+      });
 
       // Se não houver dados filtrados, usar dados de exemplo
       if (data.length === 0) {
@@ -747,7 +778,13 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
     }
 
     // Adicionar planilha com resumo por município
-    const municipalitySummary = {};
+    type MunicipalitySummaryStats = {
+      totalWeight: number;
+      totalValue: number;
+      producers: Set<string>;
+    };
+
+    const municipalitySummary: Record<string, MunicipalitySummaryStats> = {};
     filteredEntries.forEach((entry) => {
       if (!municipalitySummary[entry.municipality]) {
         municipalitySummary[entry.municipality] = {
@@ -771,7 +808,7 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
     ];
 
     const municipalityData = Object.entries(municipalitySummary).map(
-      ([municipality, stats]: [string, any]) => {
+      ([municipality, stats]) => {
         const region =
           municipalities.find((m) => m.name === municipality)?.region || "";
         const avgPerProducer = stats.totalWeight / stats.producers.size;
@@ -799,7 +836,13 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
     }
 
     // Adicionar planilha com resumo por cor
-    const colorSummary = {};
+    type ColorSummaryStats = {
+      totalWeight: number;
+      totalValue: number;
+      entries: number;
+    };
+
+    const colorSummary: Record<string, ColorSummaryStats> = {};
     filteredEntries.forEach((entry) => {
       const colorName =
         colors.find((c) => c.code === entry.colorCode)?.name || entry.colorCode;
@@ -816,7 +859,7 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
     });
 
     const totalWeight = Object.values(colorSummary).reduce(
-      (sum, stats: any) => sum + stats.totalWeight,
+      (sum, stats) => sum + stats.totalWeight,
       0,
     );
 
@@ -829,20 +872,18 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
       "Nº de Entradas",
     ];
 
-    const colorData = Object.entries(colorSummary).map(
-      ([colorName, stats]: [string, any]) => {
-        const percentage = (stats.totalWeight / totalWeight) * 100;
-        const avgValue = stats.totalValue / stats.totalWeight;
-        return [
-          colorName,
-          stats.totalWeight.toFixed(2),
-          percentage.toFixed(2),
-          stats.totalValue.toFixed(2),
-          avgValue.toFixed(2),
-          stats.entries,
-        ];
-      },
-    );
+    const colorData = Object.entries(colorSummary).map(([colorName, stats]) => {
+      const percentage = (stats.totalWeight / totalWeight) * 100;
+      const avgValue = stats.totalValue / stats.totalWeight;
+      return [
+        colorName,
+        stats.totalWeight.toFixed(2),
+        percentage.toFixed(2),
+        stats.totalValue.toFixed(2),
+        avgValue.toFixed(2),
+        stats.entries,
+      ];
+    });
 
     if (colorData.length > 0) {
       const wsColors = XLSX.utils.aoa_to_sheet([colorHeaders, ...colorData]);
