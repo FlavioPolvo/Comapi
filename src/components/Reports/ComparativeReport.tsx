@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -83,6 +83,8 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
   className = "",
 }) => {
   const [reportType, setReportType] = useState<string>("period");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(10);
   const [fromDate, setFromDate] = useState<Date | undefined>(
     subMonths(new Date(), 3),
   );
@@ -93,6 +95,8 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
   const [selectedRegion, setSelectedRegion] = useState<string>();
   const [chartType, setChartType] = useState<string>("bar");
   const [isFiltersOpen, setIsFiltersOpen] = useState<boolean>(true);
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
 
   // Usar o hook para buscar os dados
   const { data, loading, error } = useReportData();
@@ -592,7 +596,67 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
   }, [filteredEntries, reportType, colors, municipalities]);
 
   const handleExportPDF = () => {
-    const { title, headers, data } = getReportData();
+    let title, headers, data;
+
+    if (reportType === "producers-list") {
+      title = "Lista Completa de Produtores";
+      headers = [
+        "ID",
+        "Nome",
+        "Código COMAPI",
+        "Município",
+        "Comunidade",
+        "Região",
+      ];
+
+      // Filtrar produtores conforme os filtros aplicados
+      const filteredProducers = producers.filter(
+        (producer) =>
+          (!selectedMunicipality ||
+            producer.municipality === selectedMunicipality) &&
+          (!selectedRegion ||
+            municipalities.find((m) => m.name === producer.municipality)
+              ?.region === selectedRegion),
+      );
+
+      data = filteredProducers.map((producer) => [
+        producer.id,
+        producer.name,
+        producer.cod_na_comapi,
+        producer.municipality,
+        producer.community,
+        municipalities.find((m) => m.name === producer.municipality)?.region ||
+          "",
+      ]);
+    } else if (reportType === "entries-list") {
+      title = "Registro Completo de Entradas";
+      headers = [
+        "Data",
+        "Produtor",
+        "Município",
+        "Quantidade",
+        "Peso Líq. (kg)",
+        "Valor Total (R$)",
+        "Classificação",
+      ];
+
+      data = filteredEntries.map((entry) => [
+        format(new Date(entry.date), "dd/MM/yyyy"),
+        entry.producerName,
+        entry.municipality,
+        entry.quantity.toString(),
+        entry.netWeight.toFixed(2),
+        `R$ ${entry.totalValue.toFixed(2)}`,
+        colors.find((c) => c.code === entry.colorCode)?.name || entry.colorCode,
+      ]);
+    } else {
+      // Usar a função existente para outros tipos de relatório
+      const reportData = getReportData();
+      title = reportData.title;
+      headers = reportData.headers;
+      data = reportData.data;
+    }
+
     const doc = new jsPDF();
 
     // Add title
@@ -641,7 +705,34 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
     // Adicionar informações sobre o total de registros
     const finalY = (doc as any).lastAutoTable.finalY || yPos;
     doc.setFontSize(10);
-    doc.text(`Total de registros: ${filteredEntries.length}`, 14, finalY + 10);
+
+    if (reportType === "producers-list") {
+      const filteredProducers = producers.filter(
+        (producer) =>
+          (!selectedMunicipality ||
+            producer.municipality === selectedMunicipality) &&
+          (!selectedRegion ||
+            municipalities.find((m) => m.name === producer.municipality)
+              ?.region === selectedRegion),
+      );
+      doc.text(
+        `Total de produtores: ${filteredProducers.length}`,
+        14,
+        finalY + 10,
+      );
+    } else if (reportType === "entries-list") {
+      doc.text(
+        `Total de registros de entrada: ${filteredEntries.length}`,
+        14,
+        finalY + 10,
+      );
+    } else {
+      doc.text(
+        `Total de registros: ${filteredEntries.length}`,
+        14,
+        finalY + 10,
+      );
+    }
 
     // Save the PDF
     doc.save(
@@ -650,7 +741,80 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
   };
 
   const handleExportExcel = () => {
-    const { title, headers, data } = getReportData();
+    let title, headers, data;
+
+    if (reportType === "producers-list") {
+      title = "Lista Completa de Produtores";
+      headers = [
+        "ID",
+        "Nome",
+        "Código COMAPI",
+        "Município",
+        "Comunidade",
+        "Região",
+      ];
+
+      // Filtrar produtores conforme os filtros aplicados
+      const filteredProducers = producers.filter(
+        (producer) =>
+          (!selectedMunicipality ||
+            producer.municipality === selectedMunicipality) &&
+          (!selectedRegion ||
+            municipalities.find((m) => m.name === producer.municipality)
+              ?.region === selectedRegion),
+      );
+
+      data = filteredProducers.map((producer) => [
+        producer.id,
+        producer.name,
+        producer.cod_na_comapi,
+        producer.municipality,
+        producer.community,
+        municipalities.find((m) => m.name === producer.municipality)?.region ||
+          "",
+      ]);
+    } else if (reportType === "entries-list") {
+      title = "Registro Completo de Entradas";
+      headers = [
+        "Data",
+        "Produtor",
+        "Município",
+        "Comunidade",
+        "Quantidade",
+        "Peso Bruto (kg)",
+        "Peso Líquido (kg)",
+        "Valor Unitário (R$)",
+        "Valor Total (R$)",
+        "Classificação",
+        "Umidade (%)",
+        "Apiário",
+        "Lote",
+        "Contrato",
+      ];
+
+      data = filteredEntries.map((entry) => [
+        format(new Date(entry.date), "dd/MM/yyyy"),
+        entry.producerName,
+        entry.municipality,
+        entry.community,
+        entry.quantity,
+        entry.grossWeight.toFixed(2),
+        entry.netWeight.toFixed(2),
+        entry.unitValue.toFixed(2),
+        entry.totalValue.toFixed(2),
+        colors.find((c) => c.code === entry.colorCode)?.name || entry.colorCode,
+        entry.humidity.toFixed(1),
+        entry.apiary,
+        entry.lot,
+        entry.contract,
+      ]);
+    } else {
+      // Usar a função existente para outros tipos de relatório
+      const reportData = getReportData();
+      title = reportData.title;
+      headers = reportData.headers;
+      data = reportData.data;
+    }
 
     // Create worksheet for the main report
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
@@ -1328,6 +1492,25 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
     }
   };
 
+  useEffect(() => {
+    // Reset pagination when report type changes
+    setCurrentPage(1);
+  }, [reportType]);
+
+  useEffect(() => {
+    if (searchTerm.trim() === "") {
+      setSearchResults(producers);
+      return;
+    }
+    // Filter producers based on search term
+    const results = producers.filter(
+      (producer) =>
+        producer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        producer.municipality.toLowerCase().includes(searchTerm.toLowerCase()),
+    );
+    setSearchResults(results);
+  }, [searchTerm, producers]);
+
   return (
     <div className={cn("bg-background p-6 rounded-lg", className)}>
       <Card className="w-full">
@@ -1368,11 +1551,17 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
             onValueChange={setReportType}
             className="w-full"
           >
-            <TabsList className="grid w-full grid-cols-4 mb-6">
+            <TabsList className="grid w-full grid-cols-6 mb-6">
               <TabsTrigger value="period">Por Período</TabsTrigger>
               <TabsTrigger value="municipality">Por Município</TabsTrigger>
               <TabsTrigger value="producer">Por Produtor</TabsTrigger>
               <TabsTrigger value="color">Por Classificação</TabsTrigger>
+              <TabsTrigger value="producers-list">
+                Lista de Produtores
+              </TabsTrigger>
+              <TabsTrigger value="entries-list">
+                Registro de Entradas
+              </TabsTrigger>
             </TabsList>
 
             {isFiltersOpen && (
@@ -1615,88 +1804,336 @@ const ComparativeReport: React.FC<ComparativeReportProps> = ({
               </div>
             )}
 
-            {/* Chart Type Selector */}
-            <div className="flex justify-end gap-2 mb-4">
-              <Button
-                variant={chartType === "bar" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setChartType("bar")}
-              >
-                <BarChart3 className="h-4 w-4 mr-1" /> Barras
-              </Button>
-              <Button
-                variant={chartType === "line" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setChartType("line")}
-              >
-                <LineChartIcon className="h-4 w-4 mr-1" /> Linhas
-              </Button>
-              <Button
-                variant={chartType === "pie" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setChartType("pie")}
-              >
-                <PieChartIcon className="h-4 w-4 mr-1" /> Pizza
-              </Button>
-            </div>
+            {/* Chart Type Selector - Only show for comparative reports */}
+            {reportType !== "producers-list" &&
+              reportType !== "entries-list" && (
+                <div className="flex justify-end gap-2 mb-4">
+                  <Button
+                    variant={chartType === "bar" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setChartType("bar")}
+                  >
+                    <BarChart3 className="h-4 w-4 mr-1" /> Barras
+                  </Button>
+                  <Button
+                    variant={chartType === "line" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setChartType("line")}
+                  >
+                    <LineChartIcon className="h-4 w-4 mr-1" /> Linhas
+                  </Button>
+                  <Button
+                    variant={chartType === "pie" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setChartType("pie")}
+                  >
+                    <PieChartIcon className="h-4 w-4 mr-1" /> Pizza
+                  </Button>
+                </div>
+              )}
 
-            <div className="h-[400px] w-full bg-muted/10 rounded-lg border">
-              {renderChart()}
-            </div>
+            {/* Only show charts for comparative reports */}
+            {reportType !== "producers-list" &&
+              reportType !== "entries-list" && (
+                <div className="h-[400px] w-full bg-muted/10 rounded-lg border">
+                  {renderChart()}
+                </div>
+              )}
 
             <Separator className="my-6" />
 
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-muted/50">
-                    {getReportData().headers.map((header, index) => (
-                      <th key={index} className="p-2 text-left">
-                        {header}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td
-                        colSpan={getReportData().headers.length}
-                        className="p-4 text-center"
-                      >
-                        <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
-                        <p>Carregando dados...</p>
-                      </td>
-                    </tr>
-                  ) : getReportData().data.length > 0 ? (
-                    getReportData().data.map((row, index) => (
-                      <tr key={index} className="border-b hover:bg-muted/20">
-                        {row.map((cell, cellIndex) => (
-                          <td key={cellIndex} className="p-2">
-                            {cell}
-                          </td>
-                        ))}
+              {reportType === "producers-list" ? (
+                <>
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-muted/50">
+                        <th className="p-2 text-left">ID</th>
+                        <th className="p-2 text-left">Nome</th>
+                        <th className="p-2 text-left">Código COMAPI</th>
+                        <th className="p-2 text-left">Município</th>
+                        <th className="p-2 text-left">Comunidade</th>
+                        <th className="p-2 text-left">Região</th>
                       </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan={getReportData().headers.length}
-                        className="p-4 text-center"
+                    </thead>
+                    <tbody>
+                      {loading ? (
+                        <tr>
+                          <td colSpan={6} className="p-4 text-center">
+                            <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                            <p>Carregando dados...</p>
+                          </td>
+                        </tr>
+                      ) : producers.length > 0 ? (
+                        producers
+                          .filter(
+                            (producer) =>
+                              (!selectedMunicipality ||
+                                producer.municipality ===
+                                  selectedMunicipality) &&
+                              (!selectedRegion ||
+                                municipalities.find(
+                                  (m) => m.name === producer.municipality,
+                                )?.region === selectedRegion),
+                          )
+                          .slice(
+                            (currentPage - 1) * itemsPerPage,
+                            currentPage * itemsPerPage,
+                          )
+                          .map((producer, index) => (
+                            <tr
+                              key={index}
+                              className="border-b hover:bg-muted/20"
+                            >
+                              <td className="p-2">{producer.id}</td>
+                              <td className="p-2">{producer.name}</td>
+                              <td className="p-2">{producer.cod_na_comapi}</td>
+                              <td className="p-2">{producer.municipality}</td>
+                              <td className="p-2">{producer.community}</td>
+                              <td className="p-2">
+                                {municipalities.find(
+                                  (m) => m.name === producer.municipality,
+                                )?.region || ""}
+                              </td>
+                            </tr>
+                          ))
+                      ) : (
+                        <tr>
+                          <td colSpan={6} className="p-4 text-center">
+                            Nenhum produtor encontrado para os filtros
+                            selecionados.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                  <div className="flex justify-between items-center mt-4">
+                    <div className="text-sm text-muted-foreground">
+                      Mostrando{" "}
+                      {Math.min(
+                        (currentPage - 1) * itemsPerPage + 1,
+                        producers.length,
+                      )}{" "}
+                      a {Math.min(currentPage * itemsPerPage, producers.length)}{" "}
+                      de {producers.length} produtores
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setCurrentPage((prev) => Math.max(prev - 1, 1))
+                        }
+                        disabled={currentPage === 1}
                       >
-                        Nenhum dado encontrado para os filtros selecionados.
-                      </td>
+                        Anterior
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((prev) => prev + 1)}
+                        disabled={
+                          currentPage * itemsPerPage >= producers.length
+                        }
+                      >
+                        Próximo
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : reportType === "entries-list" ? (
+                <>
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-muted/50">
+                        <th className="p-2 text-left">Data</th>
+                        <th className="p-2 text-left">Produtor</th>
+                        <th className="p-2 text-left">Município</th>
+                        <th className="p-2 text-left">Comunidade</th>
+                        <th className="p-2 text-left">Quantidade</th>
+                        <th className="p-2 text-left">Peso Bruto (kg)</th>
+                        <th className="p-2 text-left">Peso Líquido (kg)</th>
+                        <th className="p-2 text-left">Valor Unitário (R$)</th>
+                        <th className="p-2 text-left">Valor Total (R$)</th>
+                        <th className="p-2 text-left">Classificação</th>
+                        <th className="p-2 text-left">Umidade (%)</th>
+                        <th className="p-2 text-left">Apiário</th>
+                        <th className="p-2 text-left">Lote</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loading ? (
+                        <tr>
+                          <td colSpan={13} className="p-4 text-center">
+                            <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                            <p>Carregando dados...</p>
+                          </td>
+                        </tr>
+                      ) : filteredEntries.length > 0 ? (
+                        filteredEntries
+                          .slice(
+                            (currentPage - 1) * itemsPerPage,
+                            currentPage * itemsPerPage,
+                          )
+                          .map((entry, index) => (
+                            <tr
+                              key={index}
+                              className="border-b hover:bg-muted/20"
+                            >
+                              <td className="p-2">
+                                {format(new Date(entry.date), "dd/MM/yyyy")}
+                              </td>
+                              <td className="p-2">{entry.producerName}</td>
+                              <td className="p-2">{entry.municipality}</td>
+                              <td className="p-2">{entry.community}</td>
+                              <td className="p-2">{entry.quantity}</td>
+                              <td className="p-2">
+                                {entry.grossWeight.toFixed(2)}
+                              </td>
+                              <td className="p-2">
+                                {entry.netWeight.toFixed(2)}
+                              </td>
+                              <td className="p-2">
+                                R$ {entry.unitValue.toFixed(2)}
+                              </td>
+                              <td className="p-2">
+                                R$ {entry.totalValue.toFixed(2)}
+                              </td>
+                              <td className="p-2">
+                                {colors.find((c) => c.code === entry.colorCode)
+                                  ?.name || entry.colorCode}
+                              </td>
+                              <td className="p-2">
+                                {entry.humidity.toFixed(1)}%
+                              </td>
+                              <td className="p-2">{entry.apiary}</td>
+                              <td className="p-2">{entry.lot}</td>
+                            </tr>
+                          ))
+                      ) : (
+                        <tr>
+                          <td colSpan={13} className="p-4 text-center">
+                            Nenhum registro de entrada encontrado para os
+                            filtros selecionados.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                  <div className="flex justify-between items-center mt-4">
+                    <div className="text-sm text-muted-foreground">
+                      Mostrando{" "}
+                      {Math.min(
+                        (currentPage - 1) * itemsPerPage + 1,
+                        filteredEntries.length,
+                      )}{" "}
+                      a{" "}
+                      {Math.min(
+                        currentPage * itemsPerPage,
+                        filteredEntries.length,
+                      )}{" "}
+                      de {filteredEntries.length} registros
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setCurrentPage((prev) => Math.max(prev - 1, 1))
+                        }
+                        disabled={currentPage === 1}
+                      >
+                        Anterior
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((prev) => prev + 1)}
+                        disabled={
+                          currentPage * itemsPerPage >= filteredEntries.length
+                        }
+                      >
+                        Próximo
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-muted/50">
+                      {getReportData().headers.map((header, index) => (
+                        <th key={index} className="p-2 text-left">
+                          {header}
+                        </th>
+                      ))}
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <tr>
+                        <td
+                          colSpan={getReportData().headers.length}
+                          className="p-4 text-center"
+                        >
+                          <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                          <p>Carregando dados...</p>
+                        </td>
+                      </tr>
+                    ) : getReportData().data.length > 0 ? (
+                      getReportData().data.map((row, index) => (
+                        <tr key={index} className="border-b hover:bg-muted/20">
+                          {row.map((cell, cellIndex) => (
+                            <td key={cellIndex} className="p-2">
+                              {cell}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan={getReportData().headers.length}
+                          className="p-4 text-center"
+                        >
+                          Nenhum dado encontrado para os filtros selecionados.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
             </div>
           </Tabs>
         </CardContent>
         <CardFooter className="flex justify-between">
           <div>
             <p className="text-sm text-muted-foreground">
-              Total de registros: {loading ? "..." : filteredEntries.length}
+              {reportType === "producers-list" ? (
+                <>
+                  Total de produtores:{" "}
+                  {loading
+                    ? "..."
+                    : producers.filter(
+                        (producer) =>
+                          (!selectedMunicipality ||
+                            producer.municipality === selectedMunicipality) &&
+                          (!selectedRegion ||
+                            municipalities.find(
+                              (m) => m.name === producer.municipality,
+                            )?.region === selectedRegion),
+                      ).length}
+                </>
+              ) : reportType === "entries-list" ? (
+                <>
+                  Total de registros de entrada:{" "}
+                  {loading ? "..." : filteredEntries.length}
+                </>
+              ) : (
+                <>
+                  Total de registros: {loading ? "..." : filteredEntries.length}
+                </>
+              )}
             </p>
           </div>
           <div className="flex gap-2">
