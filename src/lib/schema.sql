@@ -111,6 +111,7 @@ CREATE TRIGGER update_entry_modtime
 
 -- Insert initial color data
 INSERT INTO colors (code, name, hex_color) VALUES
+<<<<<<< Updated upstream
 ('1', 'Branco Ãgua', '#F5F5F5'),
 ('2', 'Extra Branco', '#FFFFFF'),
 ('3', 'Branco', '#FFFAFA'),
@@ -122,6 +123,19 @@ INSERT INTO colors (code, name, hex_color) VALUES
 -- Insert initial region/municipality data
 INSERT INTO municipalities (name, region) VALUES
 ('SÃ£o Paulo', 'Sudeste'),
+=======
+('1', 'Branco Água', '#F5F5F5'),
+('2', 'Extra Branco', '#FFFFFF'),
+('3', 'Branco', '#FFFAFA'),
+('4', 'Âmbar Extra Claro', '#FFEBCD'),
+('5', 'Âmbar Claro', '#FFD700'),
+('6', 'Âmbar', '#FFA500'),
+('7', 'Âmbar Escuro', '#B8860B');
+
+-- Insert initial region/municipality data
+INSERT INTO municipalities (name, region) VALUES
+('São Paulo', 'Sudeste'),
+>>>>>>> Stashed changes
 ('Rio de Janeiro', 'Sudeste'),
 ('Belo Horizonte', 'Sudeste'),
 ('Salvador', 'Nordeste'),
@@ -130,4 +144,8 @@ INSERT INTO municipalities (name, region) VALUES
 ('Porto Alegre', 'Sul'),
 ('Curitiba', 'Sul'),
 ('Manaus', 'Norte'),
+<<<<<<< Updated upstream
 ('BelÃ©m', 'Norte');
+=======
+('Belém', 'Norte');
+>>>>>>> Stashed changes
